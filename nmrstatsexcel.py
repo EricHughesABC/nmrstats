@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-title
 """
 Created on Sun Jul 26 10:51:30 2020
 
@@ -101,7 +101,7 @@ known_groups = ['DP',
  'HCG',
  'PHA']
 
-def read_procpar(procpar_file):
+def read_procpar(procpar_file: str):
     """read the procpar file and return a dictionary of the parameters"""
     with open(procpar_file, 'r') as f:
         procpar_txt = f.read()
@@ -116,6 +116,35 @@ def read_procpar(procpar_file):
             val = val.strip('"')
             procpar[ky] = val
     return procpar
+
+# def read_procpar(procpar_file):
+#     """
+#     Read the procpar file and return a dictionary of the parameters.
+
+#     Parameters
+#     ----------
+#     procpar_file : str
+#         Path to the procpar file.
+
+#     Returns
+#     -------
+#     procpar : dict
+#         A dictionary containing the parameters.
+#     """
+#     with open(procpar_file, 'r') as f:
+#         procpar_txt = f.read()
+
+#     lines = procpar_txt.splitlines()
+#     procpar = {}
+
+#     for i in range(len(lines) - 1):
+#         if lines[i].startswith(" 0"):
+#             ky = lines[i].split()[1]
+#             val = lines[i + 1].split()[-1].strip('"')
+#             procpar[ky] = val
+
+#     return procpar
+
 
 class ExperimentTime:
     """expt_time = ExperimentTime(procpar["time_run"], procpar["time_saved"])"""
@@ -228,34 +257,28 @@ class NMRstats():
         df2 : TYPE
             dataframe after query has been performed
         """
-        print('isolate_dataframe')
-        print(df.shape)
-        print(df.head())
         yqstr = self.create_query_str('years', self.p_yrs)
-        print('yqstr', yqstr)
         mqstr = self.create_query_str('month_name', self.p_mnths)
-        print('mqstr', mqstr)
         sqstr = self.create_query_str('spectrometer', self.p_spcs)
-        print('sqstr', sqstr)
         df2 = df.query(yqstr)
-        print(yqstr, df2.shape)
         df2 = df2.query(mqstr)
-        print(mqstr, df2.shape)
         df2 = df2.query(sqstr)
-        print(sqstr, df2.shape)
 
         return df2
 
 
-def bruker_find_group_member_sample(path: str):
+
+
+
+def bruker_find_group_member_grantnumber_sample(path: str):
     """
-    Extract group_id, member_id, sample_id, and title string from
+    Extract group_id, member_id, grantnumber_id, sample_id, and title string from
     Bruker title file
 
     Parameters
     ----------
-    path : TYPE
-        DESCRIPTION.
+    path : str
+        directory stem.
 
     Returns
     -------
@@ -263,6 +286,9 @@ def bruker_find_group_member_sample(path: str):
         name of the group the data belongs to
     member_id : str
         name of the member  the data bleongs to
+
+    grantnumber_id : str
+        grant number
     sample_id : str
         sample description
     title0 : str
@@ -272,37 +298,57 @@ def bruker_find_group_member_sample(path: str):
 
     grp_id = 'UNKNOWN'
     member_id = 'UNKNOWN'
+    grant_id = 'UNKNOWN'
     sample_id = 'UNKNOWN'
+    title0 = 'UNKNOWN'
 
-    with open(path, "r", errors='replace') as fp:
+    titlepath = os.path.join(path, "pdata", "1", "title")
+    origpath = os.path.join(path, "orig")
+
+    num_words_in_orig = -1
+
+    # read in grp_id, member_id and grant_id from origpath
+    if os.path.exists(origpath):
+        with open(origpath, "r", errors='replace') as fp:
+            origtxt = fp.readline().strip().split(sep=":")
+            if len(origtxt) == 3:
+                grp_id, member_id, grant_id = origtxt
+                num_words_in_orig = 3
+            elif len(origtxt) == 2:
+                grp_id, member_id = origtxt
+                num_words_in_orig = 2
+    else:
+        logging.info(f"Could not find orig file in {path}")
+
+
+
+
+    with open(titlepath, "r", errors='replace') as fp:
         title0 = fp.readline().strip()
-        title2 = fp.readline().strip()
+        # title2 = fp.readline().strip()
 
     title1 = title0.replace(';', ':')
     title1 = title1.replace('::', '')
     title = title1.strip().split(sep=':')
-    if len(title) > 3:
-        title = [title[0], title[1], ":".join(title[2:])]
-    if len(title) == 3:
-        grp_id = title[0].strip().upper()
-        member_id = title[1].strip().upper()
-        sample_id = title[2].strip().upper()
-    elif len(title) == 2:
-        if len(title[1]) > 3 or " " in title[1]:
-            grp_id = "UNKNOWN"
-            member_id = title[0].strip().upper()
-            sample_id = title[1].strip().upper()
-            if member_id in known_groups:
-                grp_id = member_id
+    if num_words_in_orig == -1:
+        # then orig file does not exist
+        # check to see if experiment is from teaching labs by looking for "TLabs" in title
+        if "Tlabs" in title0:
+            grp_id = title[0].upper()
+            member_id = title[1].upper()
+            if "Teaching" in title0:
+                grant_id = "Teaching"
+                sample_id = ":".join(title[3:])
+            else:
+                sample_id = ":".join(title[2:])
+    elif num_words_in_orig == 2:
+        sample_id = ":".join(title[2:])
+    elif num_words_in_orig == 3:
+        sample_id = ":".join(title[3:])
 
 
-    elif len(title) == 1:
-        if title != "":
-            sample_id = title[0].strip().upper()
-            member_id = 'UNKNOWN'
-            grp_id = 'UNKNOWN'
+    return grp_id, grant_id, member_id, sample_id, title0
 
-    return grp_id, member_id, sample_id, title0
 
 def bruker_find_experiment_time(pathf: str, spec_id: str):
     """
@@ -549,6 +595,12 @@ def bruker_find_experiment_params(path: str):
     """
     parmdict = {}
 
+
+    print("**********************************")
+    print("\nbruker_find_experiment_params\n",   path)
+    print("**********************************")
+
+
     with open(path, "r") as fp:
         for line in fp:
             parmlist = line.split()[:2]
@@ -620,6 +672,7 @@ def varian_find_group_member_sample(path: str):
 
     """
     grp_id = 'UNKNOWN'
+    grant_id = 'UNKNOWN'
     member_id = 'UNKNOWN'
     sample_id = 'UNKNOWN'
 
@@ -630,16 +683,21 @@ def varian_find_group_member_sample(path: str):
         title = title1 + title2
 
         g_m_s = re.split(r";*:+;*|:*;+:*", title)
-        
-        if len(g_m_s) > 3:
-            g_m_s = [g_m_s[0], g_m_s[1], ":".join(g_m_s[2:])]
 
         if len(g_m_s) == 3:
             grp_id, member_id, sample_id = g_m_s
-        elif len(g_m_s) == 2:
-            grp_id, member_id = g_m_s
+        
+        elif len(g_m_s) >= 4:
+            if g_m_s[2].upper() in ["UNKNOWN", "NONE"] or g_m_s[2].isnumeric():
+                g_m_s = [g_m_s[0], g_m_s[1], g_m_s[2], ":".join(g_m_s[3:])]
+                grp_id, member_id, grant_id, sample_id = g_m_s
+            else:
+                g_m_s = [g_m_s[0], g_m_s[1],  ":".join(g_m_s[2:])]
+                grp_id, member_id, sample_id = g_m_s
 
-    return grp_id.upper(), member_id.upper(), sample_id, title
+
+
+    return grp_id.upper(), grant_id.upper(), member_id.upper(), sample_id, title
 
 
 
@@ -1187,6 +1245,7 @@ def startNMRstats():
                       'spectrometer',
                       'file',
                       'group_id',
+                      'grant_id',
                       'member_id',
                       'sample_id',
                       'title',
@@ -1199,6 +1258,7 @@ def startNMRstats():
                       'duration']
 
     raw_data_list = []
+     
     for ss, vv in nmrdatadir_dict.items():
         print(ss,vv)
         for v in vv:
@@ -1216,32 +1276,20 @@ def startNMRstats():
                             spmnthyr = file_params[-3]
                         else:
                             spmnthyr = file_params[-2]
+
+                        print(v, spmnthyr)
     
                         expt_num = d
                         spectrometer = ss
                         if not os.path.exists(os.path.join(v, d, 'pdata', '1', 'title')):
-                            print(os.path.join(v, d, 'pdata', '1', 'title'))
                             continue
                         if not os.path.exists(os.path.join(v, d, 'audita.txt')):
-                            print(os.path.join(v, d, 'audita.txt'), os.path.exists(os.path.join(v, d, 'audita.txt')))
                             continue                    
-                        # if not os.path.exists(os.path.join(v, d, 'pdata', '1', 'parm.txt')):
-                        #     print(os.path.join(v, d, 'pdata', '1', 'parm.txt'), os.path.exists(os.path.join(v, d, 'pdata', '1', 'parm.txt')))
-                        #     continue                                          
-                        group_id, member_id, sample_id, title = bruker_find_group_member_sample(os.path.join(v, d, 'pdata', '1', 'title'))
+
+                        group_id, grant_id, member_id, sample_id, title = bruker_find_group_member_grantnumber_sample(os.path.join(v, d))
                         date, enddate, duration = bruker_find_experiment_time(os.path.join(v, d, 'audita.txt'), ss)
                         sequence, solvent, nucleus = bruker_find_experiment_params_from_acqus(os.path.join(v, d, 'acqus'))
 
-                        print(ss, spmnthyr, file_params)
-    
-                        
-    #                     group_id = re.sub(r"[0-9 .:.;.\..`._.,.]", "", group_id)
-    #                     if group_id == 'YL':
-    #                         group_id = 'Y3L'
-    #                     member_id = re.sub(r"[0-9 .:.;.\..`._.,.]", "",  member_id)
-    #                     if member_id == 'YL':
-    #                         member_id = 'Y3L'
-                            
                         match = re.search(r"[a-zA-Z]+", group_id)
                         # If-statement after search() tests if it succeeded
                         if match:
@@ -1260,46 +1308,13 @@ def startNMRstats():
                         else:
                             member_id = "UNKNOWN"
                         
-                        if exptdir == "16163018":
-                            print(spmnthyr,
-                                              spectrometer,
-                                              exptdir,
-                                              group_id,
-                                              member_id,
-                                              sample_id,
-                                              title,
-                                              expt_num,
-                                              sequence,
-                                              solvent,
-                                              nucleus,
-                                              date,
-                                              enddate,
-                                              duration)
-                            
-                        aline = [spmnthyr,
-                                              spectrometer,
-                                              exptdir,
-                                              group_id,
-                                              member_id,
-                                              sample_id,
-                                              title,
-                                              expt_num,
-                                              sequence,
-                                              solvent,
-                                              nucleus,
-                                              date,
-                                              enddate,
-                                              duration]
-                        
-                        allthesame = all(element == aline[0] for element in aline)
-                        
-                        if allthesame:
-                            print("aline", aline)
+
                             
                         raw_data_list.append([spmnthyr,
                                               spectrometer,
                                               exptdir,
                                               group_id,
+                                              grant_id,
                                               member_id,
                                               sample_id,
                                               title,
@@ -1322,8 +1337,10 @@ def startNMRstats():
                                 continue
                             if not os.path.exists(os.path.join(v, d,'procpar')):
                                 continue
+
+                            grant_id = "UNKNOWN"
                             spmnthyr, exptdir,  sequence, expt_num = varian_specdate_filename_sequence(os.path.join(v, d))
-                            group_id, member_id, sample_id, title = varian_find_group_member_sample(os.path.join(v, d, 'text'))
+                            group_id, grant_id, member_id, sample_id, title = varian_find_group_member_sample(os.path.join(v, d, 'text'))
                             startdate, enddate, duration = varian_find_experiment_time(os.path.join(v, d, 'log'))
                             solvent, nucleus = varian_find_experiment_params(os.path.join(v, d,'procpar'))
 
@@ -1368,6 +1385,7 @@ def startNMRstats():
                                                   spectrometer,
                                                   exptdir,
                                                   group_id,
+                                                  grant_id,
                                                   member_id,
                                                   sample_id,
                                                   title,

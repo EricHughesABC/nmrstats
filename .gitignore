@@ -6,8 +6,16 @@ __pycache__/
 # C extensions
 *.so
 
+# csv/xlsx files
+*.csv
+*.xlsx
+
+# jupyter notebook files
+*.ipynb
+
 # Distribution / packaging
 .Python
+exec/
 build/
 develop-eggs/
 dist/
